@@ -110,6 +110,18 @@ namespace FlatRedBall.PlatformerPlugin.Generators
             codeBlock.Line("/// multiple collisions (such as vs. solid and vs. cloud) may occur in one frame.");
             codeBlock.Line("/// </summary>");
             codeBlock.Line("double mLastCollisionTime = -1;");
+
+            codeBlock.Line("/// <summary>");
+            codeBlock.Line("/// Denotes what type of collision has occurred");
+            codeBlock.Line("/// </summary>");
+            codeBlock.Line("protected enum PlatformerCollisionType { None, GroundCollision, HeadCollision }");
+            codeBlock.Line("protected delegate PlatformerCollisionType CustomPlatformerCollisionCheckDelegate(float previousY, float currentY);");
+            codeBlock.Line("private CustomPlatformerCollisionCheckDelegate mCustomCollisionCheckDelegate = null;");
+            codeBlock.Line("protected void SetCustomPlatformerCollisionCheck(CustomPlatformerCollisionCheckDelegate customCheck)");
+            codeBlock.Line("{");
+            codeBlock.Line("mCustomCollisionCheckDelegate = customCheck;");
+            codeBlock.Line("}");
+
             codeBlock.Line("#endregion");
 
 
@@ -405,7 +417,7 @@ namespace FlatRedBall.PlatformerPlugin.Generators
 
 
             if (jumpPushed && 
-                CurrentMovement.JumpVelocity > 0 &&
+                //CurrentMovement.JumpVelocity > 0 &&
                 (mIsOnGround || AfterDoubleJump == null || 
 				(AfterDoubleJump != null && mHasDoubleJumped == false) ||
 				(AfterDoubleJump != null && AfterDoubleJump.JumpVelocity > 0)
@@ -448,7 +460,14 @@ namespace FlatRedBall.PlatformerPlugin.Generators
                 mValuesJumpedWith = null;
             }
 
-            this.YVelocity = System.Math.Max(-CurrentMovement.MaxFallSpeed, this.YVelocity);
+            if (CurrentMovement.MaxFallSpeed < 0)
+            {
+                this.YVelocity = System.Math.Min(-CurrentMovement.MaxFallSpeed, this.YVelocity);
+            }
+            else
+            {
+                this.YVelocity = System.Math.Max(-CurrentMovement.MaxFallSpeed, this.YVelocity);
+            }
         }
 
 
@@ -517,20 +536,43 @@ namespace FlatRedBall.PlatformerPlugin.Generators
 
                     if (shouldApplyCollision)
                     {
-
-                        if (this.Y > lastY)
+                         if (mCustomCollisionCheckDelegate != null)
                         {
-                            if (!mIsOnGround && LandedAction != null)
+                            var result = mCustomCollisionCheckDelegate(lastY, Y);
+                            switch (result)
                             {
-                                LandedAction();
+                                case PlatformerCollisionType.GroundCollision:
+                                    if (!mIsOnGround && LandedAction != null)
+                                    {
+                                        LandedAction();
+                                    }
+                                    mIsOnGround = true;
+                                    break;
+
+                                case PlatformerCollisionType.HeadCollision:
+                                    mHitHead = true;
+                                    break;
+
+                                default:
+                                    throw new System.NotSupportedException($""Collision type of {result} is not supported"");
                             }
-                            mIsOnGround = true;
                         }
-                        if (this.Y < lastY)
+                        else
                         {
-                            mHitHead = true;
+                            if (this.Y > lastY)
+                            {
+                                if (!mIsOnGround && LandedAction != null)
+                                {
+                                    LandedAction();
+                                }
+                                mIsOnGround = true;
+                            }
+                            if (this.Y < lastY)
+                            {
+                                mHitHead = true;
+                            }
                         }
-                    }
+}
                     else
                     {
                         Position = positionBeforeCollision;
